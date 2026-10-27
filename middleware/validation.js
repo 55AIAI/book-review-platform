@@ -19,20 +19,20 @@ const schemas = {
   }).min(1), // At least one field required
 
   createBook: Joi.object({
-    googleId: Joi.string(),
+    externalId: Joi.string().max(200),
     title: Joi.string().required(),
     authors: Joi.array().items(Joi.string()),
     description: Joi.string(),
-    publishedDate: Joi.string(),
-    thumbnail: Joi.string()
+    publishedDate: Joi.alternatives().try(Joi.string(), Joi.number()),
+    thumbnail: Joi.string().uri().allow(null, "")
   }),
 
   updateBook: Joi.object({
     title: Joi.string(),
     authors: Joi.array().items(Joi.string()),
     description: Joi.string(),
-    publishedDate: Joi.string(),
-    thumbnail: Joi.string()
+    publishedDate: Joi.alternatives().try(Joi.string(), Joi.number()),
+    thumbnail: Joi.string().uri().allow(null, "")
   }).min(1),
 
   createReview: Joi.object({
