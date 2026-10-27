@@ -307,3 +307,15 @@ button.secondary-btn:hover {
     padding: 14px 20px;
   }
 }
+
+.review-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.book-card h3, .review-card h3 { overflow-wrap: anywhere; }
+button:disabled { opacity: 0.65; cursor: wait; }
+
+.header-inner { width: 100%; max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+header .user-info { flex-wrap: wrap; max-width: 100%; overflow-wrap: anywhere; }
+#dashboard-section > .card { margin-bottom: 24px; }
+.review-card .actions { display: flex; gap: 10px; margin-top: 12px; }
+.review-card .actions button { padding: 8px 14px; border: 1px solid #cfdad2; border-radius: 8px; cursor: pointer; }
+.review-card .actions .danger { background: #d96c5c; color: white; }
+@media (max-width: 480px) { .card { padding: 22px; } .container { margin-top: 24px; } }

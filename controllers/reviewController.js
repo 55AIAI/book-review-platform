@@ -1,111 +1,54 @@
 const Review = require("../models/Review");
+const Book = require("../models/Book");
 
-// Add a new review
-exports.addReview = async (req, res, next) => {
-  try {
-    const review = await Review.create({
-      ...req.body,
-      user: req.user.id
-    });
+const populated = (query, userId) => query.populate("user", "username").populate({
+  path: "book", select: "title authors", match: { createdBy: userId }
+});
 
-    const populatedReview = await Review.findById(review._id)
-      .populate("user", "username")
-      .populate("book", "title authors");
-
-    res.status(201).json(populatedReview);
-  } catch (error) {
-    next(error);
+exports.addReview = async (req, res) => {
+  const filter = { _id: req.body.book, createdBy: req.user.id };
+  if (!(await Book.exists(filter))) return res.status(404).json({ message: "Book not found" });
+  const review = await Review.create({ rating: req.body.rating, text: req.body.text,
+                                       book: req.body.book, user: req.user.id });
+  // Compensate if a concurrent delete removed the book after the first ownership check.
+  if (!(await Book.exists(filter))) {
+    await Review.deleteOne({ _id: review._id });
+    return res.status(404).json({ message: "Book not found" });
   }
+  const result = await populated(Review.findOne({ _id: review._id, user: req.user.id }), req.user.id);
+  if (!result || !result.book) return res.status(404).json({ message: "Book not found" });
+  res.status(201).json(result);
 };
 
-// Get all reviews for logged-in user
-exports.getAllReviews = async (req, res, next) => {
-  try {
-    const reviews = await Review.find({ user: req.user.id })
-      .populate("book", "title authors")
-      .sort({ date: -1 });
-
-    res.json(reviews);
-  } catch (error) {
-    next(error);
-  }
+exports.getAllReviews = async (req, res) => {
+  const reviews = await populated(Review.find({ user: req.user.id }).sort({ date: -1 }), req.user.id);
+  res.json(reviews.filter((review) => review.book));
 };
 
-// Get reviews for a specific book
-exports.getReviewsByBook = async (req, res, next) => {
-  try {
-    const reviews = await Review.find({ book: req.params.bookId })
-      .populate("user", "username")
-      .sort({ date: -1 });
-
-    res.json(reviews);
-  } catch (error) {
-    next(error);
+exports.getReviewsByBook = async (req, res) => {
+  if (!(await Book.exists({ _id: req.params.bookId, createdBy: req.user.id }))) {
+    return res.status(404).json({ message: "Book not found" });
   }
+  res.json(await populated(Review.find({ book: req.params.bookId, user: req.user.id }).sort({ date: -1 }), req.user.id));
 };
 
-// Get a specific review by ID
-exports.getReviewById = async (req, res, next) => {
-  try {
-    const review = await Review.findById(req.params.id)
-      .populate("user", "username")
-      .populate("book", "title authors");
-
-    if (!review) {
-      return res.status(404).json({ message: "Review not found" });
-    }
-
-    res.json(review);
-  } catch (error) {
-    next(error);
-  }
+exports.getReviewById = async (req, res) => {
+  const review = await populated(Review.findOne({ _id: req.params.id, user: req.user.id }), req.user.id);
+  if (!review || !review.book) return res.status(404).json({ message: "Review not found" });
+  res.json(review);
 };
 
-// Update a review
-exports.updateReview = async (req, res, next) => {
-  try {
-    const review = await Review.findById(req.params.id);
-
-    if (!review) {
-      return res.status(404).json({ message: "Review not found" });
-    }
-
-    // Check ownership
-    if (review.user.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Not authorized to update this review" });
-    }
-
-    const updatedReview = await Review.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    ).populate("user", "username").populate("book", "title authors");
-
-    res.json(updatedReview);
-  } catch (error) {
-    next(error);
-  }
+exports.updateReview = async (req, res) => {
+  const review = await populated(Review.findOneAndUpdate(
+    { _id: req.params.id, user: req.user.id }, { $set: req.body },
+    { new: true, runValidators: true }
+  ), req.user.id);
+  if (!review) return res.status(404).json({ message: "Review not found" });
+  res.json(review);
 };
 
-// Delete a review
-exports.deleteReview = async (req, res, next) => {
-  try {
-    const review = await Review.findById(req.params.id);
-
-    if (!review) {
-      return res.status(404).json({ message: "Review not found" });
-    }
-
-    // Check ownership
-    if (review.user.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Not authorized to delete this review" });
-    }
-
-    await Review.findByIdAndDelete(req.params.id);
-
-    res.json({ message: "Review deleted successfully" });
-  } catch (error) {
-    next(error);
-  }
+exports.deleteReview = async (req, res) => {
+  const review = await Review.findOneAndDelete({ _id: req.params.id, user: req.user.id });
+  if (!review) return res.status(404).json({ message: "Review not found" });
+  res.json({ message: "Review deleted" });
 };
-

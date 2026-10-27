@@ -1,16 +1,14 @@
 const router = require("express").Router();
 const auth = require("../middleware/authMiddleware");
-const bookCtrl = require("../controllers/bookController");
-const openLibraryCtrl = require("../controllers/openLibraryController");
+const validate = require("../middleware/validation");
+const { validId } = validate;
+const ctrl = require("../controllers/bookController");
 
-// 🔍 SEARCH (AUTH REQUIRED)
-router.get("/search", auth, openLibraryCtrl.searchBooks);
-
-// 📚 CRUD
-router.post("/", auth, bookCtrl.createBook);
-router.get("/", auth, bookCtrl.getBooks);
-router.get("/:id", auth, bookCtrl.getBookById);
-router.put("/:id", auth, bookCtrl.updateBook);
-router.delete("/:id", auth, bookCtrl.deleteBook);
-
+router.use(auth);
+router.get("/search", require("../controllers/openLibraryController").searchBooks);
+router.post("/", validate("createBook"), ctrl.createBook);
+router.get("/", ctrl.getBooks);
+router.get("/:id", validId("id"), ctrl.getBookById);
+router.put("/:id", validId("id"), validate("updateBook"), ctrl.updateBook);
+router.delete("/:id", validId("id"), ctrl.deleteBook);
 module.exports = router;

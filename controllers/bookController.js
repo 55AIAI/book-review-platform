@@ -1,77 +1,33 @@
 const Book = require("../models/Book");
+const Review = require("../models/Review");
 
-// Create book
-exports.createBook = async (req, res, next) => {
-  try {
-    const book = await Book.create({
-      ...req.body,
-      createdBy: req.user.id
-    });
-    res.status(201).json(book);
-  } catch (error) {
-    next(error);
-  }
+exports.createBook = async (req, res) => {
+  const book = await Book.create({ ...req.body, createdBy: req.user.id });
+  res.status(201).json(book);
 };
 
-// Get all user books
-exports.getBooks = async (req, res, next) => {
-  try {
-    const books = await Book.find({ createdBy: req.user.id })
-      .sort({ createdAt: -1 });
-    res.json(books);
-  } catch (error) {
-    next(error);
-  }
+exports.getBooks = async (req, res) => {
+  res.json(await Book.find({ createdBy: req.user.id }).sort({ createdAt: -1 }));
 };
 
-// Get book by ID
-exports.getBookById = async (req, res, next) => {
-  try {
-    const book = await Book.findById(req.params.id);
-    if (!book) {
-      return res.status(404).json({ message: "Book not found" });
-    }
-    res.json(book);
-  } catch (error) {
-    next(error);
-  }
+exports.getBookById = async (req, res) => {
+  const book = await Book.findOne({ _id: req.params.id, createdBy: req.user.id });
+  if (!book) return res.status(404).json({ message: "Book not found" });
+  res.json(book);
 };
 
-// Update book
-exports.updateBook = async (req, res, next) => {
-  try {
-    const book = await Book.findById(req.params.id);
-    if (!book) return res.status(404).json({ message: "Book not found" });
-
-    if (book.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
-
-    const updated = await Book.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-
-    res.json(updated);
-  } catch (error) {
-    next(error);
-  }
+exports.updateBook = async (req, res) => {
+  const book = await Book.findOneAndUpdate(
+    { _id: req.params.id, createdBy: req.user.id }, { $set: req.body },
+    { new: true, runValidators: true }
+  );
+  if (!book) return res.status(404).json({ message: "Book not found" });
+  res.json(book);
 };
 
-// Delete book
-exports.deleteBook = async (req, res, next) => {
-  try {
-    const book = await Book.findById(req.params.id);
-    if (!book) return res.status(404).json({ message: "Book not found" });
-
-    if (book.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Not authorized" });
-    }
-
-    await Book.findByIdAndDelete(req.params.id);
-    res.json({ message: "Book deleted" });
-  } catch (error) {
-    next(error);
-  }
+exports.deleteBook = async (req, res) => {
+  const book = await Book.findOneAndDelete({ _id: req.params.id, createdBy: req.user.id });
+  if (!book) return res.status(404).json({ message: "Book not found" });
+  await Review.deleteMany({ book: book._id });
+  res.json({ message: "Book and related reviews deleted" });
 };

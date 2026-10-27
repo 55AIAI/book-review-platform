@@ -1,0 +1,9 @@
+node_modules
+.env*
+.git
+.idea
+.test-mongo
+coverage
+tests
+*.log
+__pycache__

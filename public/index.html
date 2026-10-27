@@ -29,7 +29,7 @@
           <form id="register-form">
             <input type="text" id="reg-username" placeholder="Username" required />
             <input type="email" id="reg-email" placeholder="Email address" required />
-            <input type="password" id="reg-password" placeholder="Password (minimum 6 characters)" required />
+            <input type="password" id="reg-password" placeholder="Password (8 to 72 characters)" minlength="8" maxlength="72" required />
             <button type="submit" class="primary-btn">Register</button>
           </form>
           <p class="form-message" id="register-message"></p>
@@ -51,6 +51,7 @@
 
     <!-- Dashboard -->
     <section id="dashboard-section" class="section hidden">
+      <p id="dashboard-message" class="form-message" role="status"></p>
 
       <!-- Profile -->
       <div class="card">
@@ -63,11 +64,11 @@
           <input type="email" id="profile-email" placeholder="Email address" />
           <div class="btn-row">
             <button type="submit" class="primary-btn">Save</button>
-            <button type="button" class="secondary-btn" onclick="cancelProfileEdit()">Cancel</button>
+            <button type="button" class="secondary-btn" data-action="cancelProfileEdit">Cancel</button>
           </div>
         </form>
 
-        <button id="edit-profile-btn" class="secondary-btn" onclick="editProfile()">Edit Profile</button>
+        <button id="edit-profile-btn" class="secondary-btn" data-action="editProfile">Edit Profile</button>
       </div>
 
       <!-- Book Search -->
@@ -84,14 +85,14 @@
       <!-- Saved Books -->
       <div class="card">
         <h2>My Saved Books</h2>
-        <button class="secondary-btn" onclick="loadMyBooks()">Refresh</button>
+        <button class="secondary-btn" data-action="loadMyBooks">Refresh</button>
         <div id="my-books" class="grid"></div>
       </div>
 
       <!-- Reviews -->
       <div class="card">
         <h2>My Reviews</h2>
-        <button class="secondary-btn" onclick="loadMyReviews()">Refresh</button>
+        <button class="secondary-btn" data-action="loadMyReviews">Refresh</button>
         <div id="my-reviews"></div>
       </div>
 
@@ -100,10 +101,11 @@
 
   <!-- Review Modal -->
   <div id="review-modal" class="modal hidden">
-    <div class="modal-content">
-      <button class="modal-close" onclick="closeReviewModal()">×</button>
+    <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button type="button" class="modal-close" aria-label="Close review" data-action="closeReviewModal">×</button>
       <h2 id="modal-title">Add Review</h2>
 
+      <p id="review-message" class="form-message" role="status"></p>
       <form id="review-form">
         <input type="hidden" id="review-id" />
         <input type="hidden" id="review-book-id" />

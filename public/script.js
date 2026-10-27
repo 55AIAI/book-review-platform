@@ -1,396 +1,311 @@
-const API_URL = '';
-
-let token = localStorage.getItem('token');
+let token = localStorage.getItem("token");
 let currentUser = null;
 let currentReviewBookId = null;
 let currentReviewId = null;
+let searching = false;
 
-document.addEventListener('DOMContentLoaded', () => {
-  initializeApp();
+document.addEventListener("DOMContentLoaded", () => {
   setupEventListeners();
+  initializeApp();
 });
 
-function initializeApp() {
-  if (token) {
-    loadUserProfile();
-    showDashboard();
-  } else {
-    showAuth();
-  }
+function node(tag, text, className) {
+  const element = document.createElement(tag);
+  if (text !== undefined) element.textContent = text;
+  if (className) element.className = className;
+  return element;
+}
+
+function action(label, handler, className) {
+  const button = node("button", label, className);
+  button.type = "button";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try { await handler(); } catch (error) { showMessage("dashboard-message", error.message, "error"); }
+    finally { button.disabled = false; }
+  });
+  return button;
+}
+
+async function api(path, { method = "GET", body } = {}, authenticated = true) {
+  const requestToken = token;
+  const headers = body === undefined ? {} : { "Content-Type": "application/json" };
+  if (authenticated && requestToken) headers.Authorization = "Bearer " + requestToken;
+  const response = await fetch(path, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  if (authenticated && requestToken !== token) throw new Error("Session changed. Please retry.");
+  const data = await response.json();
+  if (authenticated && response.status === 401) logout();
+  if (!response.ok) throw new Error(data.details || data.message || "Request failed");
+  return data;
+}
+
+async function formTask(event, messageId, work) {
+  event.preventDefault();
+  const submit = event.currentTarget.querySelector('button[type="submit"]');
+  if (submit.disabled) return;
+  submit.disabled = true;
+  try { await work(); } catch (error) { showMessage(messageId, error.message || "Network error", "error"); }
+  finally { submit.disabled = false; }
 }
 
 function setupEventListeners() {
-  document.getElementById('register-form').addEventListener('submit', handleRegister);
-  document.getElementById('login-form').addEventListener('submit', handleLogin);
-  document.getElementById('profile-form').addEventListener('submit', handleProfileUpdate);
-  document.getElementById('search-form').addEventListener('submit', handleSearch);
-  document.getElementById('review-form').addEventListener('submit', handleReviewSubmit);
+  document.getElementById("register-form").addEventListener("submit", handleRegister);
+  document.getElementById("login-form").addEventListener("submit", handleLogin);
+  document.getElementById("profile-form").addEventListener("submit", handleProfileUpdate);
+  document.getElementById("search-form").addEventListener("submit", handleSearch);
+  document.getElementById("review-form").addEventListener("submit", handleReviewSubmit);
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeReviewModal(); });
+  const actions = { editProfile, cancelProfileEdit, loadMyBooks, loadMyReviews, closeReviewModal };
+  document.querySelectorAll("[data-action]").forEach((element) => {
+    element.addEventListener("click", () => {
+      Promise.resolve(actions[element.dataset.action]()).catch((error) =>
+        showMessage("dashboard-message", error.message, "error"));
+    });
+  });
 }
 
-async function handleRegister(e) {
-  e.preventDefault();
-
-  const username = document.getElementById('reg-username').value;
-  const email = document.getElementById('reg-email').value;
-  const password = document.getElementById('reg-password').value;
-
+async function initializeApp() {
+  if (!token) return showAuth();
   try {
-    const response = await fetch(`${API_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password })
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-      showMessage('register-message', 'Registration successful! Please login.', 'success');
-      document.getElementById('register-form').reset();
-    } else {
-      showMessage('register-message', data.message || data.details || 'Registration failed', 'error');
-    }
-  } catch {
-    showMessage('register-message', 'Network error. Please try again.', 'error');
+    currentUser = await api("/api/users/profile");
+    displayProfile(currentUser);
+    showDashboard();
+  } catch (error) {
+    showAuth();
+    showMessage("login-message", error.message, "error");
   }
 }
 
-async function handleLogin(e) {
-  e.preventDefault();
+function handleRegister(event) {
+  return formTask(event, "register-message", async () => {
+    await api("/api/auth/register", { method: "POST", body: {
+      username: document.getElementById("reg-username").value,
+      email: document.getElementById("reg-email").value,
+      password: document.getElementById("reg-password").value
+    } }, false);
+    document.getElementById("register-form").reset();
+    showMessage("register-message", "Account created. Please sign in.", "success");
+  });
+}
 
-  const email = document.getElementById('login-email').value;
-  const password = document.getElementById('login-password').value;
-
-  try {
-    const response = await fetch(`${API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-      token = data.token;
-      localStorage.setItem('token', token);
-      currentUser = data.user;
-      showDashboard();
-      loadUserProfile();
-      showMessage('login-message', 'Login successful!', 'success');
-      document.getElementById('login-form').reset();
-    } else {
-      showMessage('login-message', data.message || 'Login failed', 'error');
-    }
-  } catch {
-    showMessage('login-message', 'Network error. Please try again.', 'error');
-  }
+function handleLogin(event) {
+  return formTask(event, "login-message", async () => {
+    const data = await api("/api/auth/login", { method: "POST", body: {
+      email: document.getElementById("login-email").value,
+      password: document.getElementById("login-password").value
+    } }, false);
+    token = data.token;
+    localStorage.setItem("token", token);
+    currentUser = data.user;
+    displayProfile(currentUser);
+    document.getElementById("login-form").reset();
+    showDashboard();
+  });
 }
 
 function logout() {
   token = null;
   currentUser = null;
-  localStorage.removeItem('token');
+  currentReviewId = null;
+  currentReviewBookId = null;
+  localStorage.removeItem("token");
+  closeReviewModal();
+  ["my-books", "my-reviews", "search-results", "profile-display", "user-info", "dashboard-message", "review-message"].forEach((id) =>
+    document.getElementById(id).replaceChildren());
+  document.getElementById("search-form").reset();
+  cancelProfileEdit();
   showAuth();
 }
 
-async function loadUserProfile() {
-  try {
-    const response = await fetch(`${API_URL}/api/users/profile`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (response.ok) {
-      const user = await response.json();
-      currentUser = user;
-      displayProfile(user);
-    } else if (response.status === 401) {
-      logout();
-    }
-  } catch {}
-}
-
 function displayProfile(user) {
-  document.getElementById('profile-display').innerHTML = `
-    <p><strong>Username:</strong> ${user.username}</p>
-    <p><strong>Email:</strong> ${user.email}</p>
-  `;
-
-  document.getElementById('user-info').innerHTML = `
-    <span>Welcome, ${user.username}!</span>
-    <button onclick="logout()">Logout</button>
-  `;
+  const profile = document.getElementById("profile-display");
+  const username = node("p");
+  username.append(node("strong", "Username: "), node("span", user.username));
+  const email = node("p");
+  email.append(node("strong", "Email: "), node("span", user.email));
+  profile.replaceChildren(username, email);
+  document.getElementById("user-info").replaceChildren(
+    node("span", "Welcome, " + user.username + "!"), action("Logout", logout));
 }
 
 function editProfile() {
-  document.getElementById('profile-display').classList.add('hidden');
-  document.getElementById('edit-profile-btn').classList.add('hidden');
-  document.getElementById('profile-form').classList.remove('hidden');
-
-  document.getElementById('profile-username').value = currentUser.username;
-  document.getElementById('profile-email').value = currentUser.email;
+  if (!currentUser) return;
+  document.getElementById("profile-display").classList.add("hidden");
+  document.getElementById("edit-profile-btn").classList.add("hidden");
+  document.getElementById("profile-form").classList.remove("hidden");
+  document.getElementById("profile-username").value = currentUser.username;
+  document.getElementById("profile-email").value = currentUser.email;
 }
 
 function cancelProfileEdit() {
-  document.getElementById('profile-display').classList.remove('hidden');
-  document.getElementById('edit-profile-btn').classList.remove('hidden');
-  document.getElementById('profile-form').classList.add('hidden');
+  document.getElementById("profile-display").classList.remove("hidden");
+  document.getElementById("edit-profile-btn").classList.remove("hidden");
+  document.getElementById("profile-form").classList.add("hidden");
 }
 
-async function handleProfileUpdate(e) {
-  e.preventDefault();
-
-  const username = document.getElementById('profile-username').value;
-  const email = document.getElementById('profile-email').value;
-
-  try {
-    const response = await fetch(`${API_URL}/api/users/profile`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ username, email })
-    });
-
-    if (response.ok) {
-      const user = await response.json();
-      currentUser = user;
-      displayProfile(user);
-      cancelProfileEdit();
-      alert('Profile updated successfully!');
-    } else {
-      const data = await response.json();
-      alert(data.message || 'Update failed');
-    }
-  } catch {
-    alert('Network error. Please try again.');
-  }
+function handleProfileUpdate(event) {
+  return formTask(event, "dashboard-message", async () => {
+    currentUser = await api("/api/users/profile", { method: "PUT", body: {
+      username: document.getElementById("profile-username").value,
+      email: document.getElementById("profile-email").value
+    } });
+    displayProfile(currentUser);
+    cancelProfileEdit();
+    showMessage("dashboard-message", "Profile updated.", "success");
+  });
 }
 
-let lastSearchQuery = '';
-let lastSearchTime = 0;
-let isSearching = false;
-
-async function handleSearch(e) {
-  e.preventDefault();
-
-  const query = document.getElementById('search-query').value.trim();
-  const resultsDiv = document.getElementById('search-results');
-
-  if (!query || query === lastSearchQuery || isSearching) return;
-
-  const now = Date.now();
-  if (now - lastSearchTime < 1000) return;
-
-  lastSearchQuery = query;
-  lastSearchTime = now;
-  isSearching = true;
-
-  resultsDiv.innerHTML = '<div class="loading">Searching...</div>';
-
+async function handleSearch(event) {
+  event.preventDefault();
+  if (searching) return;
+  const query = document.getElementById("search-query").value.trim();
+  if (!query) return;
+  searching = true;
+  const submit = event.currentTarget.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  document.getElementById("search-results").replaceChildren(node("p", "Searching..."));
   try {
-    const response = await fetch(`${API_URL}/api/books/search?q=${encodeURIComponent(query)}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (response.ok) {
-      const books = await response.json();
-      displaySearchResults(books);
-    } else {
-      resultsDiv.innerHTML = '<div class="empty-state"><p>Search failed.</p></div>';
-      lastSearchQuery = '';
-    }
-  } catch {
-    resultsDiv.innerHTML = '<div class="empty-state"><p>Network error.</p></div>';
-    lastSearchQuery = '';
+    displaySearchResults(await api("/api/books/search?q=" + encodeURIComponent(query)));
+  } catch (error) {
+    document.getElementById("search-results").replaceChildren(node("p", error.message));
   } finally {
-    isSearching = false;
+    searching = false;
+    submit.disabled = false;
   }
 }
 
 function displaySearchResults(books) {
-  const resultsDiv = document.getElementById('search-results');
-
-  if (!books.length) {
-    resultsDiv.innerHTML = '<div class="empty-state"><p>No books found.</p></div>';
-    return;
+  const results = document.getElementById("search-results");
+  results.replaceChildren();
+  if (!books.length) return results.append(node("p", "No books found."));
+  for (const book of books) {
+    const card = node("div", undefined, "book-card");
+    try {
+      const url = new URL(book.thumbnail);
+      if (url.protocol === "https:") {
+        const image = node("img");
+        image.src = url.href;
+        image.alt = book.title;
+        image.loading = "lazy";
+        card.append(image);
+      }
+    } catch { /* A book without a valid HTTPS cover still has a usable card. */ }
+    card.append(node("h3", book.title), node("p", (book.authors || []).join(", ")));
+    const actions = node("div", undefined, "actions");
+    actions.append(action("Save", () => saveBook(book)));
+    card.append(actions);
+    results.append(card);
   }
-
-  resultsDiv.innerHTML = books.map(book => `
-    <div class="book-card">
-      ${book.thumbnail ? `<img src="${book.thumbnail}" />` : ''}
-      <h3>${book.title}</h3>
-      <p>${book.authors.join(', ')}</p>
-      <div class="actions">
-        <button onclick='saveBook(${JSON.stringify(book)})'>Save</button>
-      </div>
-    </div>
-  `).join('');
 }
 
 async function saveBook(book) {
-  try {
-    const response = await fetch(`${API_URL}/api/books`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(book)
-    });
-
-    if (response.ok) {
-      loadMyBooks();
-    }
-  } catch {}
+  await api("/api/books", { method: "POST", body: book });
+  await loadMyBooks();
+  showMessage("dashboard-message", "Book saved.", "success");
 }
 
 async function loadMyBooks() {
-  const booksDiv = document.getElementById('my-books');
-  booksDiv.innerHTML = '';
-
-  try {
-    const response = await fetch(`${API_URL}/api/books`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (response.ok) {
-      const books = await response.json();
-      displayMyBooks(books);
-    }
-  } catch {}
+  displayMyBooks(await api("/api/books"));
 }
 
 function displayMyBooks(books) {
-  const booksDiv = document.getElementById('my-books');
-
-  if (!books.length) {
-    booksDiv.innerHTML = '<p>No saved books.</p>';
-    return;
+  const container = document.getElementById("my-books");
+  container.replaceChildren();
+  if (!books.length) return container.append(node("p", "No saved books."));
+  for (const book of books) {
+    const card = node("div", undefined, "book-card");
+    const actions = node("div", undefined, "actions");
+    actions.append(action("Review", () => openReviewModal(book._id)),
+      action("Delete", () => deleteBook(book._id), "danger"));
+    card.append(node("h3", book.title), node("p", (book.authors || []).join(", ")), actions);
+    container.append(card);
   }
-
-  booksDiv.innerHTML = books.map(book => `
-    <div class="book-card">
-      <h3>${book.title}</h3>
-      <p>${book.authors.join(', ')}</p>
-      <div class="actions">
-        <button onclick="openReviewModal('${book._id}')">Review</button>
-        <button class="danger" onclick="deleteBook('${book._id}')">Delete</button>
-      </div>
-    </div>
-  `).join('');
 }
 
 async function deleteBook(bookId) {
-  if (!confirm('Delete book?')) return;
-
-  try {
-    const response = await fetch(`${API_URL}/api/books/${bookId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (response.ok) loadMyBooks();
-  } catch {}
+  if (!confirm("Delete this book and its reviews?")) return;
+  await api("/api/books/" + encodeURIComponent(bookId), { method: "DELETE" });
+  await Promise.all([loadMyBooks(), loadMyReviews()]);
 }
 
 async function loadMyReviews() {
-  const reviewsDiv = document.getElementById('my-reviews');
-  reviewsDiv.innerHTML = '';
-
-  try {
-    const response = await fetch(`${API_URL}/api/reviews`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (response.ok) {
-      const reviews = await response.json();
-      displayMyReviews(reviews);
-    }
-  } catch {}
+  displayMyReviews(await api("/api/reviews"));
 }
 
 function displayMyReviews(reviews) {
-  const reviewsDiv = document.getElementById('my-reviews');
-
-  if (!reviews.length) {
-    reviewsDiv.innerHTML = '<p>No reviews.</p>';
-    return;
+  const container = document.getElementById("my-reviews");
+  container.replaceChildren();
+  if (!reviews.length) return container.append(node("p", "No reviews."));
+  for (const review of reviews) {
+    const card = node("div", undefined, "review-card");
+    const rating = Math.max(0, Math.min(5, Number(review.rating) || 0));
+    const actions = node("div", undefined, "actions");
+    actions.append(action("Edit", () => openReviewModal(review.book._id, review)),
+      action("Delete", () => deleteReview(review._id), "danger"));
+    card.append(node("h3", review.book?.title || "Unavailable book"),
+      node("p", "★".repeat(rating) + " (" + rating + "/5)"),
+      node("p", review.text, "review-text"), actions);
+    container.append(card);
   }
-
-  reviewsDiv.innerHTML = reviews.map(review => `
-    <div class="review-card">
-      <div>${'⭐'.repeat(review.rating)}</div>
-      <div>${review.text}</div>
-      <button onclick="deleteReview('${review._id}')">Delete</button>
-    </div>
-  `).join('');
 }
 
-function openReviewModal(bookId) {
+function openReviewModal(bookId, review = null) {
   currentReviewBookId = bookId;
-  currentReviewId = null;
-  document.getElementById('review-book-id').value = bookId;
-  document.getElementById('review-modal').classList.remove('hidden');
+  currentReviewId = review ? review._id : null;
+  document.getElementById("review-form").reset();
+  document.getElementById("review-message").textContent = "";
+  document.getElementById("modal-title").textContent = review ? "Edit Review" : "Add Review";
+  if (review) {
+    document.getElementById("review-rating").value = review.rating;
+    document.getElementById("review-text").value = review.text;
+  }
+  document.getElementById("review-modal").classList.remove("hidden");
+  document.getElementById("review-rating").focus();
 }
 
 function closeReviewModal() {
-  document.getElementById('review-modal').classList.add('hidden');
+  document.getElementById("review-modal").classList.add("hidden");
+  document.getElementById("review-form").reset();
+  currentReviewId = null;
+  currentReviewBookId = null;
 }
 
-async function handleReviewSubmit(e) {
-  e.preventDefault();
-
-  const rating = parseInt(document.getElementById('review-rating').value);
-  const text = document.getElementById('review-text').value;
-
-  try {
-    const response = await fetch(`${API_URL}/api/reviews`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ rating, text, book: currentReviewBookId })
+function handleReviewSubmit(event) {
+  return formTask(event, "review-message", async () => {
+    const body = { rating: Number(document.getElementById("review-rating").value),
+                   text: document.getElementById("review-text").value };
+    const editing = currentReviewId;
+    if (!editing) body.book = currentReviewBookId;
+    await api("/api/reviews" + (editing ? "/" + encodeURIComponent(editing) : ""), {
+      method: editing ? "PUT" : "POST", body
     });
-
-    if (response.ok) {
-      closeReviewModal();
-      loadMyReviews();
-    }
-  } catch {}
+    closeReviewModal();
+    await loadMyReviews();
+    showMessage("dashboard-message", editing ? "Review updated." : "Review added.", "success");
+  });
 }
 
-async function deleteReview(reviewId) {
-  if (!confirm('Delete review?')) return;
-
-  try {
-    const response = await fetch(`${API_URL}/api/reviews/${reviewId}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    if (response.ok) loadMyReviews();
-  } catch {}
+async function deleteReview(id) {
+  if (!confirm("Delete review?")) return;
+  await api("/api/reviews/" + encodeURIComponent(id), { method: "DELETE" });
+  await loadMyReviews();
 }
 
 function showAuth() {
-  document.getElementById('auth-section').classList.remove('hidden');
-  document.getElementById('dashboard-section').classList.add('hidden');
+  document.getElementById("auth-section").classList.remove("hidden");
+  document.getElementById("dashboard-section").classList.add("hidden");
 }
 
 function showDashboard() {
-  document.getElementById('auth-section').classList.add('hidden');
-  document.getElementById('dashboard-section').classList.remove('hidden');
-  loadMyBooks();
-  loadMyReviews();
+  document.getElementById("auth-section").classList.add("hidden");
+  document.getElementById("dashboard-section").classList.remove("hidden");
+  Promise.all([loadMyBooks(), loadMyReviews()]).catch((error) =>
+    showMessage("dashboard-message", error.message, "error"));
 }
 
 function showMessage(id, message, type) {
-  const el = document.getElementById(id);
-  el.textContent = message;
-  el.className = `form-message ${type}`;
-  setTimeout(() => {
-    el.textContent = '';
-    el.className = 'form-message';
-  }, 5000);
+  const element = document.getElementById(id);
+  element.textContent = message;
+  element.className = "form-message " + type;
+  element.setAttribute("role", "status");
 }
