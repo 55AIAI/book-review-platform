@@ -21,7 +21,7 @@ try:
     errors = []
     dialogs = []
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = playwright.chromium.launch(channel="chrome", headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.on("console", lambda message: errors.append(message.text) if message.type == "error" else None)
@@ -84,7 +84,7 @@ try:
         assert page.locator("#profile-display").inner_text() == ""
         assert dialogs == ["confirm"], dialogs
         assert errors == [], errors
-        result = {"passed": True, "browser": "Chromium", "viewports": ["1440x1000", "390x844"],
+        result = {"passed": True, "browser": "Chrome (Chromium)", "viewports": ["1440x1000", "390x844"],
                   "flow": "register, login, search fixture, save, create/edit review, cascade delete, logout",
                   "literal_html_checks": True, "console_errors": errors,
                   "screenshots": ["desktop.png", "mobile.png"]}
