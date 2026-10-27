@@ -155,3 +155,7 @@ configuration belong to deployment setup.
 Before using an existing database, resolve case-variant email duplicates and
 normalize old email records. No migration or cleanup of existing user data is
 performed automatically.
+
+CI pins Ubuntu 24.04. If MongoDB reports SERVER-121912 at startup, check the
+[official kernel compatibility notice](https://www.mongodb.com/docs/v8.0/release-notes/8.0/).
+Changing the container image alone does not change the host kernel.
