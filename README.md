@@ -16,7 +16,7 @@ docker compose up --build
 ```
 
 Open **http://localhost:5000**, register an account, and sign in.
-Compose starts a dedicated MongoDB service. Its data is retained in a named volume;
+Compose starts a dedicated MongoDB 7.0 service. Its data is retained in a named volume;
 the database port is not published. `docker compose down` stops the application.
 
 ## Run locally
@@ -124,7 +124,7 @@ HTTP application against MongoDB. Test scripts generate a unique database name,
 require a loopback MongoDB host, and remove only their own temporary database.
 They do not load your .env file.
 
-CI runs both suites on Node 22 and 24. A separate Chromium job tests registration,
+CI runs both suites on Node 22 and 24 and rejects high/critical production dependency advisories. A separate Chromium job tests registration,
 login, literal rendering of HTML-like text, search fixtures, save, review creation
 and editing, cascade deletion and logout at desktop/mobile sizes. Its screenshots
 and checks are saved as the `browser-evidence` workflow artifact.
@@ -133,7 +133,7 @@ Browser-test setup, if desired locally:
 
 ```bash
 python -m pip install playwright==1.55.0
-python -m playwright install chromium
+# Requires Google Chrome already installed.
 python tests/browser_smoke.py
 ```
 
@@ -156,6 +156,6 @@ Before using an existing database, resolve case-variant email duplicates and
 normalize old email records. No migration or cleanup of existing user data is
 performed automatically.
 
-CI pins Ubuntu 24.04. If MongoDB reports SERVER-121912 at startup, check the
-[official kernel compatibility notice](https://www.mongodb.com/docs/v8.0/release-notes/8.0/).
-Changing the container image alone does not change the host kernel.
+CI pins Ubuntu 24.04 and uses MongoDB 7.0 in both tests and Compose. MongoDB 8
+has a [host-kernel compatibility notice](https://www.mongodb.com/docs/v8.0/release-notes/8.0/)
+that can prevent startup on some newer runner kernels.
